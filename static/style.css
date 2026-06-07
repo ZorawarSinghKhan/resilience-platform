@@ -669,3 +669,9 @@ textarea:focus { outline: none; border-color: #00ff88; }
     font-weight: bold;
     font-size: 14px;
 }
+.metrics-inline {
+    margin-left: 12px;
+    font-size: 11px;
+    color: #888;
+    font-family: monospace;
+}

@@ -1,3 +1,4 @@
+import requests as req_lib
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, flash
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -255,6 +256,29 @@ def download(job_id, image_index):
                          download_name=f'resilience-report-{safe_image}.pdf')
     except (IndexError, KeyError):
         return redirect(url_for('index'))
+
+@app.route('/monitoring')
+@login_required
+def monitoring():
+    return render_template('monitoring.html', username=current_user.username)
+
+@app.route('/grafana-proxy/<path:subpath>', methods=['GET','POST'])
+@login_required  
+def grafana_proxy(subpath):
+    grafana_url = 'http://prometheus-grafana.monitoring.svc.cluster.local:80'
+    url = f"{grafana_url}/{subpath}"
+    params = request.query_string.decode()
+    if params:
+        url = f"{url}?{params}"
+    try:
+        resp = req_lib.get(url, timeout=10,
+                           headers={'X-WEBAUTH-USER': 'admin'},
+                           allow_redirects=True)
+        excluded = ['content-encoding','content-length','transfer-encoding','connection']
+        headers = {k:v for k,v in resp.headers.items() if k.lower() not in excluded}
+        return resp.content, resp.status_code, headers
+    except Exception as e:
+        return f"Grafana unavailable: {e}", 503
 
 if __name__ == '__main__':
     with app.app_context():

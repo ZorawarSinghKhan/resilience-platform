@@ -8,18 +8,13 @@ def generate_pod_chaos(safe_name, namespace="chaos-testing"):
     return {
         "apiVersion": "chaos-mesh.org/v1alpha1",
         "kind": "PodChaos",
-        "metadata": {
-            "name": f"pod-chaos-{safe_name}",
-            "namespace": namespace
-        },
+        "metadata": {"name": f"pod-chaos-{safe_name}", "namespace": namespace},
         "spec": {
             "action": "pod-kill",
             "mode": "one",
             "selector": {
                 "namespaces": ["default"],
-                "labelSelectors": {
-                    "app": f"resilience-{safe_name}"
-                }
+                "labelSelectors": {"app": f"resilience-{safe_name}"}
             },
             "duration": "30s"
         }
@@ -30,24 +25,14 @@ def generate_cpu_stress(safe_name, namespace="chaos-testing"):
     return {
         "apiVersion": "chaos-mesh.org/v1alpha1",
         "kind": "StressChaos",
-        "metadata": {
-            "name": f"cpu-stress-{safe_name}",
-            "namespace": namespace
-        },
+        "metadata": {"name": f"cpu-stress-{safe_name}", "namespace": namespace},
         "spec": {
             "mode": "one",
             "selector": {
                 "namespaces": ["default"],
-                "labelSelectors": {
-                    "app": f"resilience-{safe_name}"
-                }
+                "labelSelectors": {"app": f"resilience-{safe_name}"}
             },
-            "stressors": {
-                "cpu": {
-                    "workers": 2,
-                    "load": 80
-                }
-            },
+            "stressors": {"cpu": {"workers": 2, "load": 80}},
             "duration": "60s"
         }
     }
@@ -57,24 +42,14 @@ def generate_memory_stress(safe_name, namespace="chaos-testing"):
     return {
         "apiVersion": "chaos-mesh.org/v1alpha1",
         "kind": "StressChaos",
-        "metadata": {
-            "name": f"memory-stress-{safe_name}",
-            "namespace": namespace
-        },
+        "metadata": {"name": f"memory-stress-{safe_name}", "namespace": namespace},
         "spec": {
             "mode": "one",
             "selector": {
                 "namespaces": ["default"],
-                "labelSelectors": {
-                    "app": f"resilience-{safe_name}"
-                }
+                "labelSelectors": {"app": f"resilience-{safe_name}"}
             },
-            "stressors": {
-                "memory": {
-                    "workers": 2,
-                    "size": "256MB"
-                }
-            },
+            "stressors": {"memory": {"workers": 2, "size": "256MB"}},
             "duration": "60s"
         }
     }
@@ -84,24 +59,15 @@ def generate_network_delay(safe_name, namespace="chaos-testing"):
     return {
         "apiVersion": "chaos-mesh.org/v1alpha1",
         "kind": "NetworkChaos",
-        "metadata": {
-            "name": f"network-delay-{safe_name}",
-            "namespace": namespace
-        },
+        "metadata": {"name": f"network-delay-{safe_name}", "namespace": namespace},
         "spec": {
             "action": "delay",
             "mode": "all",
             "selector": {
                 "namespaces": ["default"],
-                "labelSelectors": {
-                    "app": f"resilience-{safe_name}"
-                }
+                "labelSelectors": {"app": f"resilience-{safe_name}"}
             },
-            "delay": {
-                "latency": "3000ms",
-                "correlation": "100",
-                "jitter": "0ms"
-            },
+            "delay": {"latency": "3000ms", "correlation": "100", "jitter": "0ms"},
             "duration": "60s"
         }
     }
@@ -111,22 +77,15 @@ def generate_packet_loss(safe_name, namespace="chaos-testing"):
     return {
         "apiVersion": "chaos-mesh.org/v1alpha1",
         "kind": "NetworkChaos",
-        "metadata": {
-            "name": f"packet-loss-{safe_name}",
-            "namespace": namespace
-        },
+        "metadata": {"name": f"packet-loss-{safe_name}", "namespace": namespace},
         "spec": {
             "action": "loss",
             "mode": "one",
             "selector": {
                 "namespaces": ["default"],
-                "labelSelectors": {
-                    "app": f"resilience-{safe_name}"
-                }
+                "labelSelectors": {"app": f"resilience-{safe_name}"}
             },
-            "loss": {
-                "loss": "30",
-            },
+            "loss": {"loss": "30"},
             "duration": "60s"
         }
     }
@@ -149,24 +108,90 @@ def delete_chaos(yaml_path):
     )
 
 
+def get_pod_metrics(safe_name):
+    result = subprocess.run(
+        ["kubectl", "top", "pods", "-l", f"app=resilience-{safe_name}", "--no-headers"],
+        capture_output=True, text=True
+    )
+    cpu_values = []
+    mem_values = []
+    for line in result.stdout.strip().split("\n"):
+        if line:
+            parts = line.split()
+            if len(parts) >= 3:
+                cpu = parts[1].replace('m', '')
+                mem = parts[2].replace('Mi', '').replace('Gi', '000')
+                if cpu.isdigit():
+                    cpu_values.append(int(cpu))
+                if mem.isdigit():
+                    mem_values.append(int(mem))
+    return {
+        "cpu_millicores": max(cpu_values) if cpu_values else 0,
+        "memory_mb": max(mem_values) if mem_values else 0
+    }
+
+
 def check_recovery(safe_name, required_pods=2):
-    start = time.time()
-    time.sleep(5)  # Initial wait reduced from 30s
-    for _ in range(25):  # poll up to 25 times
+    start = time.perf_counter()
+    time.sleep(5)
+
+    peak_cpu = 0
+    peak_mem = 0
+
+    for _ in range(25):
+        metrics = get_pod_metrics(safe_name)
+        peak_cpu = max(peak_cpu, metrics['cpu_millicores'])
+        peak_mem = max(peak_mem, metrics['memory_mb'])
+
         result = subprocess.run(
-            ["kubectl", "get", "pods",
-             "-l", f"app=resilience-{safe_name}",
-             "--no-headers"],
+            ["kubectl", "get", "pods", "-l", f"app=resilience-{safe_name}", "--no-headers"],
             capture_output=True, text=True
         )
         running = len([
-            line for line in result.stdout.strip().split("\n")
-            if line and "Running" in line
+            l for l in result.stdout.strip().split("\n")
+            if l and "Running" in l
         ])
+
         if running >= required_pods:
-            return {"status": "PASS", "recovery_time": round(time.time() - start)}
+            recovery_time_ms = round((time.perf_counter() - start) * 1000)
+
+            restart_result = subprocess.run(
+                ["kubectl", "get", "pods", "-l", f"app=resilience-{safe_name}",
+                 "-o", "jsonpath={.items[*].status.containerStatuses[*].restartCount}"],
+                capture_output=True, text=True
+            )
+            restart_count = sum(
+                int(x) for x in restart_result.stdout.split() if x.isdigit()
+            )
+
+            deployment_health = max(50, min(100,
+                100 - (recovery_time_ms / 1000) * 1.5 - (restart_count * 5)
+            ))
+
+            return {
+                "status": "PASS",
+                "recovery_time_ms": recovery_time_ms,
+                "recovery_time": round(recovery_time_ms / 1000, 2),
+                "running_pods": running,
+                "restart_count": restart_count,
+                "deployment_health": round(deployment_health),
+                "peak_cpu_millicores": peak_cpu,
+                "peak_memory_mb": peak_mem
+            }
+
         time.sleep(2)
-    return "FAIL"
+
+    return {
+        "status": "FAIL",
+        "recovery_time_ms": 0,
+        "recovery_time": 0,
+        "running_pods": 0,
+        "restart_count": 0,
+        "deployment_health": 0,
+        "peak_cpu_millicores": 0,
+        "peak_memory_mb": 0
+    }
+
 
 def run_all_chaos_tests(safe_name):
     results = {}
@@ -206,26 +231,31 @@ def run_all_chaos_tests(safe_name):
 
     for test in tests:
         print(f"\nRunning: {test['name']}")
-
         chaos_dict = test["yaml_func"](safe_name)
         applied = apply_chaos(chaos_dict, test["path"])
 
         if not applied:
-            results[test["key"]] = "FAIL"
-            print(f"  Could not apply chaos — FAIL")
+            results[test["key"]] = {
+                "status": "FAIL",
+                "recovery_time_ms": 0,
+                "recovery_time": 0,
+                "running_pods": 0,
+                "restart_count": 0,
+                "deployment_health": 0,
+                "peak_cpu_millicores": 0,
+                "peak_memory_mb": 0
+            }
             continue
 
         recovered = check_recovery(safe_name)
-        results[test["key"]] = recovered  # now returns dict with recovery_time or "FAIL"
-        print(f"  Recovery: {results[test['key']]}")
-
+        results[test["key"]] = recovered
+        print(f"Recovery: {recovered}")
         delete_chaos(test["path"])
         time.sleep(10)
 
-    # Final recovery validation
     print("\nRunning: Recovery Validation")
     final = check_recovery(safe_name)
-    results["recovery_validation"] = "PASS" if final else "FAIL"
-    print(f"  Final: {results['recovery_validation']}")
+    results["recovery_validation"] = final
+    print(f"Final: {final}")
 
     return results

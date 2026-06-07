@@ -3,3 +3,16 @@ __pycache__/
 *.pyc
 .DS_Store
 /tmp/
+
+.env
+.env.*
+instance/
+*.db
+
+.idea/
+.vscode/
+
+*.pem
+*.key
+*.crt
+.envy

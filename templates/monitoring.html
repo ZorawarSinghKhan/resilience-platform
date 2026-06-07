@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Monitoring — Resilience Platform</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .monitoring-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
+    .grafana-frame{width:100%;height:420px;border:1px solid #333;border-radius:8px;background:#111}
+    .frame-card{background:#111;border:1px solid #222;border-radius:10px;padding:16px}
+    .frame-title{color:#00ff88;font-size:13px;font-weight:bold;margin-bottom:12px}
+    .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+    .stat-card{background:#111;border:1px solid #222;border-radius:8px;padding:16px;text-align:center}
+    .stat-num{color:#00ff88;font-size:28px;font-weight:bold;font-family:'Courier New',monospace}
+    .stat-label{color:#888;font-size:11px;margin-top:4px}
+    .full-width{grid-column:1/-1}
+  </style>
+</head>
+<body>
+<div class="container wide">
+  <nav class="topnav">
+    <span class="nav-brand">■ Resilience Platform</span>
+    <div class="nav-links">
+      <span class="nav-user">■ {{ username }}</span>
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/history" class="nav-link">History</a>
+      <a href="/monitoring" class="nav-link" style="color:#00ff88">Monitoring</a>
+      <a href="/logout" class="nav-link logout">Logout</a>
+    </div>
+  </nav>
+  <h1>■ Cluster Monitoring</h1>
+  <p class="subtitle">Live Prometheus + Grafana metrics from your EKS cluster</p>
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-num" id="nodeCount">—</div><div class="stat-label">EKS Nodes Ready</div></div>
+    <div class="stat-card"><div class="stat-num" id="podCount">—</div><div class="stat-label">Running Pods</div></div>
+    <div class="stat-card"><div class="stat-num" id="nsCount">—</div><div class="stat-label">Namespaces</div></div>
+    <div class="stat-card"><div class="stat-num" id="testCount">—</div><div class="stat-label">Total Tests Run</div></div>
+  </div>
+  <div class="monitoring-grid">
+    <div class="frame-card">
+      <div class="frame-title">■ Kubernetes Cluster Overview</div>
+      <iframe class="grafana-frame" src="/grafana-proxy/d/k8s_views_global/kubernetes-views-global?orgId=1&refresh=30s&theme=dark&kiosk=tv" frameborder="0"></iframe>
+    </div>
+    <div class="frame-card">
+      <div class="frame-title">■ Node CPU &amp; Memory</div>
+      <iframe class="grafana-frame" src="/grafana-proxy/d/k8s_views_nodes/kubernetes-views-nodes?orgId=1&refresh=30s&theme=dark&kiosk=tv" frameborder="0"></iframe>
+    </div>
+    <div class="frame-card full-width">
+      <div class="frame-title">■ Pod Overview — All Namespaces</div>
+      <iframe class="grafana-frame" style="height:480px" src="/grafana-proxy/d/k8s_views_pods/kubernetes-views-pods?orgId=1&refresh=30s&theme=dark&kiosk=tv" frameborder="0"></iframe>
+    </div>
+  </div>
+  <div style="margin-top:20px;padding:14px;background:#111;border:1px solid #222;border-radius:8px">
+    <p style="color:#555;font-size:12px;margin:0">■ Grafana running in <strong style="color:#00ff88">monitoring</strong> namespace on EKS. Auto-refreshes every 30s.</p>
+  </div>
+</div>
+<script>
+async function loadStats(){
+  try{
+    const d=await(await fetch('/cluster-stats')).json();
+    document.getElementById('nodeCount').textContent=d.nodes??'—';
+    document.getElementById('podCount').textContent=d.pods??'—';
+    document.getElementById('nsCount').textContent=d.namespaces??'—';
+    document.getElementById('testCount').textContent=d.tests??'—';
+  }catch(e){}
+}
+loadStats();setInterval(loadStats,30000);
+</script>
+</body>
+</html>
